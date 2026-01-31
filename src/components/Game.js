@@ -83,27 +83,27 @@ const Game = ({
     const handleKeyPress = (e) => {
       const key = e.key.toUpperCase();
       
-      if (key.match(/^[A-ZÀÂÄÆÇÉÈÊËÎÏÔŒÙÛÜŸ]$/) && !guessedLetters.includes(key)) {
+      if (key.match(/^[A-ZÀÂÄÆÇÉÈÊËÎÏÔŒÙÛÜŸ]$/)) {
         handleGuess(key);
       }
     };
 
     window.addEventListener('keypress', handleKeyPress);
     return () => window.removeEventListener('keypress', handleKeyPress);
-  }, [gameStatus, guessedLetters]);
+  }, [gameStatus, handleGuess]);
 
-  const handleGuess = (letter) => {
+  const handleGuess = useCallback((letter) => {
     if (guessedLetters.includes(letter) || gameStatus !== 'playing') return;
 
     const newGuessedLetters = [...guessedLetters, letter];
     setGuessedLetters(newGuessedLetters);
 
     // Check if letter is in the word
-    const word = currentPuzzle.word.toUpperCase();
-    if (!word.includes(letter)) {
+    const word = currentPuzzle?.word?.toUpperCase();
+    if (word && !word.includes(letter)) {
       setWrongGuesses(prev => prev + 1);
     }
-  };
+  }, [guessedLetters, gameStatus, currentPuzzle]);
 
   const handleHint = () => {
     if (availableHints <= 0 || showHint || gameStatus !== 'playing') return;
