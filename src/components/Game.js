@@ -76,6 +76,19 @@ const Game = ({
     }
   }, [guessedLetters, wrongGuesses, currentPuzzle, gameStatus, language, difficulty, onSolveRiddle]);
 
+  const handleGuess = useCallback((letter) => {
+    if (guessedLetters.includes(letter) || gameStatus !== 'playing') return;
+
+    const newGuessedLetters = [...guessedLetters, letter];
+    setGuessedLetters(newGuessedLetters);
+
+    // Check if letter is in the word
+    const word = currentPuzzle?.word?.toUpperCase();
+    if (word && !word.includes(letter)) {
+      setWrongGuesses(prev => prev + 1);
+    }
+  }, [guessedLetters, gameStatus, currentPuzzle]);
+
   // Handle keyboard input
   useEffect(() => {
     if (gameStatus !== 'playing') return;
@@ -91,19 +104,6 @@ const Game = ({
     window.addEventListener('keypress', handleKeyPress);
     return () => window.removeEventListener('keypress', handleKeyPress);
   }, [gameStatus, handleGuess]);
-
-  const handleGuess = useCallback((letter) => {
-    if (guessedLetters.includes(letter) || gameStatus !== 'playing') return;
-
-    const newGuessedLetters = [...guessedLetters, letter];
-    setGuessedLetters(newGuessedLetters);
-
-    // Check if letter is in the word
-    const word = currentPuzzle?.word?.toUpperCase();
-    if (word && !word.includes(letter)) {
-      setWrongGuesses(prev => prev + 1);
-    }
-  }, [guessedLetters, gameStatus, currentPuzzle]);
 
   const handleHint = () => {
     if (availableHints <= 0 || showHint || gameStatus !== 'playing') return;
