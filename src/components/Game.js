@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import HangmanDrawing from './HangmanDrawing';
 import Word from './Word';
-import { wordsData } from '../data/wordsData';
+import { wordsData, themes } from '../data/wordsData';
 
 const Game = ({ 
   language, 
+  theme,
   difficulty, 
   onBack, 
   solvedRiddles, 
@@ -15,19 +16,32 @@ const Game = ({
   const [guessedLetters, setGuessedLetters] = useState([]);
   const [wrongGuesses, setWrongGuesses] = useState(0);
   const [gameStatus, setGameStatus] = useState('playing'); // 'playing', 'won', 'lost'
-  const [showHint, setShowHint] = useState(false);
-  const [availableHints, setAvailableHints] = useState(0);
+  const [hintedLetter, setHintedLetter] = useState(null); // Letter highlighted by hint
+  const [hintUsed, setHintUsed] = useState(false); // Track if hint was used this round
+  const [showWinOverlay, setShowWinOverlay] = useState(false); // Win celebration overlay
+  const [autoProgressCountdown, setAutoProgressCountdown] = useState(null); // Countdown for auto-progress
+  
+  // Ref to prevent re-initialization after winning
+  const justWonRef = useRef(false);
+  const isInitializedRef = useRef(false);
 
   // Get available puzzles that haven't been solved yet
   const getAvailablePuzzles = useCallback(() => {
-    const allPuzzles = wordsData[language][difficulty];
-    const solved = solvedRiddles?.[language]?.[difficulty] || [];
+    const allPuzzles = wordsData[language][theme][difficulty];
+    const solved = solvedRiddles?.[language]?.[theme]?.[difficulty] || [];
     return allPuzzles.filter(puzzle => !solved.includes(puzzle.word));
-  }, [language, difficulty, solvedRiddles]);
+  }, [language, theme, difficulty, solvedRiddles]);
 
-  // Initialize game
+  // Initialize game - only on mount or when theme/difficulty changes manually
   useEffect(() => {
-    const availablePuzzles = getAvailablePuzzles();
+    // Skip re-initialization if we just won (solvedRiddles changed due to win)
+    if (justWonRef.current) {
+      return;
+    }
+    
+    const allPuzzles = wordsData[language][theme][difficulty];
+    const solved = solvedRiddles?.[language]?.[theme]?.[difficulty] || [];
+    const availablePuzzles = allPuzzles.filter(puzzle => !solved.includes(puzzle.word));
     
     if (availablePuzzles.length === 0) {
       // All puzzles solved
@@ -40,16 +54,12 @@ const Game = ({
     setGuessedLetters([]);
     setWrongGuesses(0);
     setGameStatus('playing');
-    setShowHint(false);
-
-    // Set available hints based on difficulty
-    const hints = {
-      easy: 3,
-      medium: 2,
-      hard: 1
-    };
-    setAvailableHints(hints[difficulty] || 1);
-  }, [language, difficulty, getAvailablePuzzles]);
+    setHintedLetter(null);
+    setHintUsed(false);
+    setShowWinOverlay(false);
+    setAutoProgressCountdown(null);
+    isInitializedRef.current = true;
+  }, [language, theme, difficulty]); // Remove getAvailablePuzzles dependency to prevent re-init on win
 
   // Check win/loss conditions
   useEffect(() => {
@@ -65,8 +75,15 @@ const Game = ({
     );
 
     if (isWinner) {
+      // Set flag BEFORE calling onSolveRiddle to prevent re-initialization
+      justWonRef.current = true;
       setGameStatus('won');
-      onSolveRiddle(language, difficulty, currentPuzzle.word);
+      setShowWinOverlay(true);
+      // Delay countdown start to ensure overlay renders first
+      setTimeout(() => {
+        setAutoProgressCountdown(3);
+      }, 100);
+      onSolveRiddle(language, theme, difficulty, currentPuzzle.word);
       return;
     }
 
@@ -74,7 +91,7 @@ const Game = ({
     if (wrongGuesses >= 6) {
       setGameStatus('lost');
     }
-  }, [guessedLetters, wrongGuesses, currentPuzzle, gameStatus, language, difficulty, onSolveRiddle]);
+  }, [guessedLetters, wrongGuesses, currentPuzzle, gameStatus, language, theme, difficulty, onSolveRiddle]);
 
   const handleGuess = useCallback((letter) => {
     if (guessedLetters.includes(letter) || gameStatus !== 'playing') return;
@@ -82,16 +99,21 @@ const Game = ({
     const newGuessedLetters = [...guessedLetters, letter];
     setGuessedLetters(newGuessedLetters);
 
+    // Clear hinted letter once guessed
+    if (hintedLetter === letter) {
+      setHintedLetter(null);
+    }
+
     // Check if letter is in the word
     const word = currentPuzzle?.word?.toUpperCase();
     if (word && !word.includes(letter)) {
       setWrongGuesses(prev => prev + 1);
     }
-  }, [guessedLetters, gameStatus, currentPuzzle]);
+  }, [guessedLetters, gameStatus, currentPuzzle, hintedLetter]);
 
-  // Handle keyboard input
+  // Handle keyboard input - block when overlay is visible
   useEffect(() => {
-    if (gameStatus !== 'playing') return;
+    if (gameStatus !== 'playing' || showWinOverlay) return;
 
     const handleKeyPress = (e) => {
       const key = e.key.toUpperCase();
@@ -103,19 +125,20 @@ const Game = ({
 
     window.addEventListener('keypress', handleKeyPress);
     return () => window.removeEventListener('keypress', handleKeyPress);
-  }, [gameStatus, handleGuess]);
+  }, [gameStatus, handleGuess, showWinOverlay]);
 
-  const handleHint = () => {
-    if (availableHints <= 0 || showHint || gameStatus !== 'playing') return;
-    setShowHint(true);
-    setAvailableHints(prev => prev - 1);
-  };
-
-  const handleNextPuzzle = () => {
-    const availablePuzzles = getAvailablePuzzles();
+  const handleNextPuzzle = useCallback(() => {
+    // Reset the justWon flag when moving to next puzzle
+    justWonRef.current = false;
+    
+    const allPuzzles = wordsData[language][theme][difficulty];
+    const solved = solvedRiddles?.[language]?.[theme]?.[difficulty] || [];
+    const availablePuzzles = allPuzzles.filter(puzzle => !solved.includes(puzzle.word));
     
     if (availablePuzzles.length === 0) {
       setCurrentPuzzle(null);
+      setShowWinOverlay(false);
+      setAutoProgressCountdown(null);
       return;
     }
 
@@ -124,14 +147,46 @@ const Game = ({
     setGuessedLetters([]);
     setWrongGuesses(0);
     setGameStatus('playing');
-    setShowHint(false);
+    setHintedLetter(null);
+    setHintUsed(false);
+    setShowWinOverlay(false);
+    setAutoProgressCountdown(null);
+  }, [language, theme, difficulty, solvedRiddles]);
+
+  // Auto-progress countdown after winning
+  useEffect(() => {
+    if (autoProgressCountdown === null || autoProgressCountdown <= 0) return;
+
+    const timer = setTimeout(() => {
+      if (autoProgressCountdown === 1) {
+        handleNextPuzzle();
+      } else {
+        setAutoProgressCountdown(prev => prev - 1);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [autoProgressCountdown, handleNextPuzzle]);
+
+  const handleHint = () => {
+    if (hintUsed || gameStatus !== 'playing' || !currentPuzzle) return;
     
-    const hints = {
-      easy: 3,
-      medium: 2,
-      hard: 1
-    };
-    setAvailableHints(hints[difficulty] || 1);
+    // Find all letters in the word that haven't been guessed yet
+    const word = currentPuzzle.word.toUpperCase();
+    const wordLetters = word.split('').filter(letter => letter !== ' ');
+    const uniqueWordLetters = [...new Set(wordLetters)];
+    const unguessedCorrectLetters = uniqueWordLetters.filter(
+      letter => !guessedLetters.includes(letter)
+    );
+    
+    if (unguessedCorrectLetters.length > 0) {
+      // Pick a random unguessed letter from the word
+      const randomLetter = unguessedCorrectLetters[
+        Math.floor(Math.random() * unguessedCorrectLetters.length)
+      ];
+      setHintedLetter(randomLetter);
+      setHintUsed(true);
+    }
   };
 
   const getAlphabet = () => {
@@ -148,17 +203,23 @@ const Game = ({
   };
 
   if (!currentPuzzle) {
+    const themeLabel = themes[theme]?.label[language] || theme;
     return (
       <div className="game-container">
         <div className="completion-message">
-          <h2>🎉 Congratulations!</h2>
-          <p>You've solved all puzzles in {language} - {difficulty} mode!</p>
+          <h2>🎉 {language === 'english' ? 'Congratulations!' : 'Félicitations!'}</h2>
+          <p>
+            {language === 'english' 
+              ? `You've solved all puzzles in ${themeLabel} - ${difficulty} mode!`
+              : `Vous avez résolu toutes les énigmes en ${themeLabel} - ${difficulty}!`
+            }
+          </p>
           <div className="completion-actions">
             <button className="action-btn" onClick={onBack}>
-              Choose Different Level
+              {language === 'english' ? 'Choose Different Level' : 'Choisir un autre niveau'}
             </button>
             <button className="action-btn" onClick={onShowLeaderboard}>
-              View Progress
+              {language === 'english' ? 'View Progress' : 'Voir la progression'}
             </button>
           </div>
         </div>
@@ -169,12 +230,13 @@ const Game = ({
   return (
     <div className="game-container">
       <div className="game-header">
-        <button className="back-btn" onClick={onBack}>← Back</button>
+        <button className="back-btn" onClick={onBack}>← {language === 'english' ? 'Back' : 'Retour'}</button>
         <div className="game-info">
-          <span className="language-badge">{language === 'english' ? '🇬🇧' : '🇫🇷'} {language.toUpperCase()}</span>
+          <span className="language-badge">{language === 'english' ? '🇬🇧' : '🇫🇷'}</span>
+          <span className="theme-badge">{themes[theme]?.emoji} {themes[theme]?.label[language]}</span>
           <span className="difficulty-badge">{difficulty.toUpperCase()}</span>
         </div>
-        <button className="progress-btn" onClick={onShowLeaderboard}>📊 Progress</button>
+        <button className="progress-btn" onClick={onShowLeaderboard}>📊 {language === 'english' ? 'Progress' : 'Progrès'}</button>
       </div>
 
       <div className="game-content">
@@ -183,31 +245,42 @@ const Game = ({
         </div>
 
         <div className="word-section">
+          {/* Always-visible hint from the word object */}
+          <div className="word-hint-box">
+            <span className="hint-label">💡 {language === 'english' ? 'Hint' : 'Indice'}:</span>
+            <span className="hint-text">{currentPuzzle.hint}</span>
+          </div>
+
           <Word 
             word={currentPuzzle.word} 
             guessedLetters={guessedLetters}
             reveal={gameStatus === 'lost'}
           />
-          
-          {showHint && (
-            <div className="hint-box">
-              💡 Hint: {currentPuzzle.hint}
-            </div>
-          )}
 
           <div className="hint-section">
             <button 
-              className="hint-btn" 
+              className={`hint-btn ${hintUsed ? 'used' : ''}`}
               onClick={handleHint}
-              disabled={availableHints <= 0 || showHint || gameStatus !== 'playing'}
+              disabled={hintUsed || gameStatus !== 'playing'}
             >
-              💡 Hint ({availableHints} left)
+              {hintUsed 
+                ? (language === 'english' ? '🔤 Letter Hint Used' : '🔤 Indice Lettre Utilisé')
+                : (language === 'english' ? '🔤 Reveal a Letter' : '🔤 Révéler une Lettre')
+              }
             </button>
+            {hintedLetter && (
+              <p className="hint-instruction">
+                {language === 'english' 
+                  ? 'A correct letter is highlighted in blue below!'
+                  : 'Une lettre correcte est surlignée en bleu ci-dessous!'
+                }
+              </p>
+            )}
           </div>
 
           {getIncorrectLetters().length > 0 && (
             <div className="incorrect-letters">
-              <p>Incorrect guesses:</p>
+              <p>{language === 'english' ? 'Incorrect guesses:' : 'Erreurs:'}</p>
               <div className="incorrect-list">
                 {getIncorrectLetters().map((letter, index) => (
                   <span key={index} className="incorrect-letter">{letter}</span>
@@ -220,41 +293,63 @@ const Game = ({
 
       {gameStatus === 'playing' && (
         <div className="keyboard">
-          {getAlphabet().map(letter => (
-            <button
-              key={letter}
-              className={`key ${guessedLetters.includes(letter) ? 'used' : ''} ${
-                guessedLetters.includes(letter) && currentPuzzle.word.toUpperCase().includes(letter)
-                  ? 'correct'
-                  : guessedLetters.includes(letter)
-                  ? 'incorrect'
-                  : ''
-              }`}
-              onClick={() => handleGuess(letter)}
-              disabled={guessedLetters.includes(letter)}
-            >
-              {letter}
-            </button>
-          ))}
+          {getAlphabet().map(letter => {
+            const isGuessed = guessedLetters.includes(letter);
+            const isCorrect = isGuessed && currentPuzzle.word.toUpperCase().includes(letter);
+            const isIncorrect = isGuessed && !currentPuzzle.word.toUpperCase().includes(letter);
+            const isHinted = hintedLetter === letter && !isGuessed;
+            
+            return (
+              <button
+                key={letter}
+                className={`key ${isGuessed ? 'used' : ''} ${isCorrect ? 'correct' : ''} ${isIncorrect ? 'incorrect' : ''} ${isHinted ? 'hinted' : ''}`}
+                onClick={() => handleGuess(letter)}
+                disabled={isGuessed}
+              >
+                {letter}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {gameStatus === 'won' && (
-        <div className="game-result won">
-          <h2>🎉 You Won!</h2>
-          <p>Congratulations! You solved the puzzle!</p>
-          <button className="next-btn" onClick={handleNextPuzzle}>
-            Next Puzzle →
-          </button>
+      {/* Win Celebration Overlay */}
+      {showWinOverlay && (
+        <div className="win-overlay">
+          <div className="win-modal">
+            <div className="win-confetti">🎉</div>
+            <h2>{language === 'english' ? 'Well Done!' : 'Bravo!'}</h2>
+            <p className="win-message">
+              {language === 'english' 
+                ? 'You guessed the word correctly!' 
+                : 'Vous avez deviné le mot correctement!'
+              }
+            </p>
+            <div className="win-word">
+              <span className="win-word-label">{language === 'english' ? 'The answer was' : 'La réponse était'}:</span>
+              <span className="win-word-text">{currentPuzzle.word}</span>
+            </div>
+            <button className="next-btn" onClick={handleNextPuzzle}>
+              {language === 'english' ? 'Next Word →' : 'Mot Suivant →'}
+            </button>
+            {autoProgressCountdown && (
+              <p className="auto-progress-text">
+                {language === 'english' 
+                  ? `Auto-continuing in ${autoProgressCountdown}s...`
+                  : `Continuation auto dans ${autoProgressCountdown}s...`
+                }
+              </p>
+            )}
+          </div>
         </div>
       )}
 
       {gameStatus === 'lost' && (
         <div className="game-result lost">
-          <h2>😢 Game Over</h2>
-          <p>The answer was: <strong>{currentPuzzle.word}</strong></p>
+          <h2>😢 {language === 'english' ? 'Game Over' : 'Partie Terminée'}</h2>
+          <p>{language === 'english' ? 'The answer was' : 'La réponse était'}: <strong>{currentPuzzle.word}</strong></p>
           <button className="next-btn" onClick={handleNextPuzzle}>
-            Try Another →
+            {language === 'english' ? 'Try Another →' : 'Essayer un Autre →'}
           </button>
         </div>
       )}

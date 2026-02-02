@@ -9,6 +9,7 @@ function App() {
   const [userInfo, setUserInfo] = useState(null);
   const [language, setLanguage] = useState('english');
   const [difficulty, setDifficulty] = useState(null);
+  const [theme, setTheme] = useState(null);
   const [gameStarted, setGameStarted] = useState(false);
   const [solvedRiddles, setSolvedRiddles] = useState({});
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -54,8 +55,9 @@ function App() {
     setUserInfo(info);
   };
 
-  const handleDifficultySelect = (selectedDifficulty) => {
+  const handleDifficultySelect = (selectedDifficulty, selectedTheme) => {
     setDifficulty(selectedDifficulty);
+    setTheme(selectedTheme);
     setGameStarted(true);
   };
 
@@ -66,22 +68,27 @@ function App() {
   const handleBackToMenu = () => {
     setGameStarted(false);
     setDifficulty(null);
+    setTheme(null);
   };
 
-  const handleSolveRiddle = (lang, diff, word) => {
+  const handleSolveRiddle = (lang, thm, diff, word) => {
     setSolvedRiddles(prev => {
       const updated = { ...prev };
       
       if (!updated[lang]) {
         updated[lang] = {};
       }
-      
-      if (!updated[lang][diff]) {
-        updated[lang][diff] = [];
+
+      if (!updated[lang][thm]) {
+        updated[lang][thm] = {};
       }
       
-      if (!updated[lang][diff].includes(word)) {
-        updated[lang][diff] = [...updated[lang][diff], word];
+      if (!updated[lang][thm][diff]) {
+        updated[lang][thm][diff] = [];
+      }
+      
+      if (!updated[lang][thm][diff].includes(word)) {
+        updated[lang][thm][diff] = [...updated[lang][thm][diff], word];
       }
       
       return updated;
@@ -119,6 +126,7 @@ function App() {
       ) : (
         <Game
           language={language}
+          theme={theme}
           difficulty={difficulty}
           onBack={handleBackToMenu}
           solvedRiddles={solvedRiddles}
@@ -131,6 +139,7 @@ function App() {
         <Leaderboard
           solvedRiddles={solvedRiddles}
           language={language}
+          theme={theme}
           difficulty={difficulty}
           onClose={handleCloseLeaderboard}
           onResetProgress={handleResetProgress}
