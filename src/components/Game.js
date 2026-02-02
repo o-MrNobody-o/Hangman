@@ -23,14 +23,6 @@ const Game = ({
   
   // Ref to prevent re-initialization after winning
   const justWonRef = useRef(false);
-  const isInitializedRef = useRef(false);
-
-  // Get available puzzles that haven't been solved yet
-  const getAvailablePuzzles = useCallback(() => {
-    const allPuzzles = wordsData[language][theme][difficulty];
-    const solved = solvedRiddles?.[language]?.[theme]?.[difficulty] || [];
-    return allPuzzles.filter(puzzle => !solved.includes(puzzle.word));
-  }, [language, theme, difficulty, solvedRiddles]);
 
   // Initialize game - only on mount or when theme/difficulty changes manually
   useEffect(() => {
@@ -58,8 +50,7 @@ const Game = ({
     setHintUsed(false);
     setShowWinOverlay(false);
     setAutoProgressCountdown(null);
-    isInitializedRef.current = true;
-  }, [language, theme, difficulty]); // Remove getAvailablePuzzles dependency to prevent re-init on win
+  }, [language, theme, difficulty, solvedRiddles]); // solvedRiddles included - justWonRef prevents re-init after winning
 
   // Check win/loss conditions
   useEffect(() => {
